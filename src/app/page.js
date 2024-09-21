@@ -125,24 +125,24 @@ export default function Home() {
           
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             <div className="bg-gray-800 p-6 rounded-lg shadow-md">
-              <Calendar
-                onChange={setSelectedDate}
-                value={selectedDate}
-                className="w-full bg-gray-900 text-gray-100 border-gray-700 rounded-lg shadow-lg"
-                tileClassName={({ date, view }) => 
-                  view === 'month' ? `${
-                    getCompletionStatus(date) === 'complete' ? 'bg-green-800' :
-                    getCompletionStatus(date) === 'partial' ? 'bg-yellow-800' :
-                    'bg-red-800'
-                  } hover:opacity-75 text-gray-100` : null
-                }
-                calendarType="US"
-                prevLabel={<span className="text-indigo-400">◀</span>}
-                nextLabel={<span className="text-indigo-400">▶</span>}
-                navigationLabel={({ date }) => (
-                  <span className="text-indigo-400 font-bold">{date.toLocaleString('default', { month: 'long', year: 'numeric' })}</span>
-                )}
-              />
+            <Calendar
+  onChange={setSelectedDate}
+  value={selectedDate}
+  className="w-full bg-yellow-800 text-purple-100 border-gray-700 rounded-lg"
+  tileClassName={({ date, view }) =>
+    view === 'month' ? `${
+      getCompletionStatus(date) === 'complete' ? 'bg-green-600' :
+      getCompletionStatus(date) === 'partial' ? 'bg-yellow-600' :
+      'bg-red-600'
+    } hover:opacity-75 text-gray-100` : null
+  }
+  prevLabel={<span className="text-purple-100">&#8592;</span>}
+  nextLabel={<span className="text-purple-100">&#8594;</span>}
+  navigationLabel={({ date }) => (
+    <span className="text-purple-100">{date.toLocaleString('default', { month: 'long', year: 'numeric' })}</span>
+  )}
+/>
+
             </div>
             
             <div>
