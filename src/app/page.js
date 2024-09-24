@@ -23,7 +23,7 @@ export default function Home() {
       setUser(JSON.parse(storedUser))
       fetchHabits()
     }
-  }, [])
+  }, [router])
 
   const fetchHabits = async () => {
     try {
