@@ -1,52 +1,76 @@
 "use client"
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import Calendar from 'react-calendar'
 import 'react-calendar/dist/Calendar.css'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
 import { jsPDF } from "jspdf"
 
 export default function Home() {
+  const router = useRouter()
   const [habits, setHabits] = useState([])
   const [newHabitName, setNewHabitName] = useState('')
   const [selectedDate, setSelectedDate] = useState(new Date())
   const [activeTab, setActiveTab] = useState('daily')
+  const [user, setUser] = useState(null)
 
   useEffect(() => {
-    const storedHabits = localStorage.getItem('habits')
-    if (storedHabits) {
-      setHabits(JSON.parse(storedHabits))
+    const storedUser = localStorage.getItem('user')
+    if (!storedUser) {
+      router.push('/signin')
+    } else {
+      setUser(JSON.parse(storedUser))
+      fetchHabits()
     }
   }, [])
 
-  useEffect(() => {
-    localStorage.setItem('habits', JSON.stringify(habits))
-  }, [habits])
+  const fetchHabits = async () => {
+    try {
+      const response = await fetch('/api/habits')
+      const data = await response.json()
+      setHabits(Array.isArray(data) ? data : [])
+    } catch (error) {
+      console.error('Error fetching habits:', error)
+      setHabits([])
+    }
+  }
 
-  const addHabit = (e) => {
+  const addHabit = async (e) => {
     e.preventDefault()
     if (newHabitName.trim()) {
-      setHabits([...habits, { id: Date.now().toString(), name: newHabitName.trim(), completedDates: [] }])
+      const response = await fetch('/api/habits', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newHabitName.trim(), completedDates: [] })
+      })
+      const data = await response.json()
+      setHabits(prevHabits => [...prevHabits, { ...data.habit, _id: data.insertedId }])
       setNewHabitName('')
     }
   }
 
-  const toggleHabit = (id) => {
+  const toggleHabit = async (id) => {
     const dateString = selectedDate.toISOString().split('T')[0]
-    setHabits(habits.map(habit =>
-      habit.id === id
-        ? {
-            ...habit,
-            completedDates: habit.completedDates.includes(dateString)
-              ? habit.completedDates.filter(date => date !== dateString)
-              : [...habit.completedDates, dateString]
-          }
-        : habit
+    const habit = habits.find(h => h._id === id)
+    const updatedCompletedDates = habit.completedDates.includes(dateString)
+      ? habit.completedDates.filter(date => date !== dateString)
+      : [...habit.completedDates, dateString]
+   
+    await fetch('/api/habits', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, completedDates: updatedCompletedDates })
+    })
+
+    setHabits(prevHabits => prevHabits.map(habit =>
+      habit._id === id ? { ...habit, completedDates: updatedCompletedDates } : habit
     ))
   }
 
-  const removeHabit = (id) => {
-    setHabits(habits.filter(habit => habit.id !== id))
+  const removeHabit = async (id) => {
+    await fetch(`/api/habits?id=${id}`, { method: 'DELETE' })
+    setHabits(prevHabits => prevHabits.filter(habit => habit._id !== id))
   }
 
   const getStreak = (habit) => {
@@ -86,7 +110,7 @@ export default function Home() {
   const getHabitData = () => {
     const thirtyDaysAgo = new Date()
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
-    
+   
     const data = []
     for (let i = 0; i < 30; i++) {
       const date = new Date(thirtyDaysAgo)
@@ -117,151 +141,166 @@ export default function Home() {
     doc.save("habit-tracker-report.pdf")
   }
 
-  return (
-    <div className="min-h-screen bg-gray-900 text-gray-100 py-12 px-4 sm:px-6 lg:px-8 font-sans">
-      <div className="max-w-6xl mx-auto bg-gray-800 rounded-lg shadow-xl overflow-hidden">
-        <div className="px-6 py-8">
-          <h1 className="text-4xl font-extrabold text-indigo-400 text-center mb-8">Habit Tracker</h1>
-          
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            <div className="bg-gray-800 p-6 rounded-lg shadow-md">
-            <Calendar
-  onChange={setSelectedDate}
-  value={selectedDate}
-  className="w-full bg-yellow-800 text-purple-100 border-gray-700 rounded-lg"
-  tileClassName={({ date, view }) =>
-    view === 'month' ? `${
-      getCompletionStatus(date) === 'complete' ? 'bg-green-600' :
-      getCompletionStatus(date) === 'partial' ? 'bg-yellow-600' :
-      'bg-red-600'
-    } hover:opacity-75 text-gray-100` : null
+  const handleSignOut = () => {
+    localStorage.removeItem('user')
+    router.push('/signin')
   }
-  prevLabel={<span className="text-purple-100">&#8592;</span>}
-  nextLabel={<span className="text-purple-100">&#8594;</span>}
-  navigationLabel={({ date }) => (
-    <span className="text-purple-100">{date.toLocaleString('default', { month: 'long', year: 'numeric' })}</span>
-  )}
-/>
 
-            </div>
-            
-            <div>
-              <form onSubmit={addHabit} className="mb-6">
-                <div className="flex">
-                  <input
-                    type="text"
-                    value={newHabitName}
-                    onChange={(e) => setNewHabitName(e.target.value)}
-                    placeholder="Enter new habit"
-                    className="flex-grow px-4 py-2 bg-gray-700 border border-gray-600 rounded-l-md focus:ring-indigo-500 focus:border-indigo-500 text-gray-100"
-                  />
-                  <button type="submit" className="px-4 py-2 border border-transparent text-sm font-medium rounded-r-md text-gray-900 bg-indigo-400 hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
-                    Add Habit
-                  </button>
-                </div>
-              </form>
-              
-              <ul className="space-y-3">
-                {habits.map(habit => (
-                  <li key={habit.id} className="flex items-center justify-between bg-gray-700 p-4 rounded-md shadow">
-                    <div className="flex items-center">
-                      <input
-                        type="checkbox"
-                        checked={habit.completedDates.includes(selectedDate.toISOString().split('T')[0])}
-                        onChange={() => toggleHabit(habit.id)}
-                        className="h-4 w-4 text-indigo-400 focus:ring-indigo-500 border-gray-600 rounded bg-gray-700"
-                      />
-                      <span className="ml-3 text-gray-100">{habit.name}</span>
-                      <span className="ml-2 text-sm text-gray-400">Streak: {getStreak(habit)}</span>
-                      {getStreak(habit) >= 7 && <span className="ml-2">🔥</span>}
-                      {getStreak(habit) >= 30 && <span className="ml-2">🏆</span>}
-                    </div>
-                    <button onClick={() => removeHabit(habit.id)} className="text-red-400 hover:text-red-300">
-                      <svg className="h-5 w-5" fill="none" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" stroke="currentColor">
-                        <path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
-                      </svg>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
-          
-          <div className="mt-12">
-            <h2 className="text-2xl font-bold text-indigo-400 mb-4">Analytics</h2>
-            <div className="flex mb-4">
-              <button
-                className={`mr-2 px-4 py-2 rounded ${activeTab === 'daily' ? 'bg-indigo-600 text-gray-100' : 'bg-gray-700 text-gray-300'}`}
-                onClick={() => setActiveTab('daily')}
-              >
-                Daily
-              </button>
-              <button
-                className={`mr-2 px-4 py-2 rounded ${activeTab === 'weekly' ? 'bg-indigo-600 text-gray-100' : 'bg-gray-700 text-gray-300'}`}
-                onClick={() => setActiveTab('weekly')}
-              >
-                Weekly
-              </button>
-              <button
-                className={`px-4 py-2 rounded ${activeTab === 'overall' ? 'bg-indigo-600 text-gray-100' : 'bg-gray-700 text-gray-300'}`}
-                onClick={() => setActiveTab('overall')}
-              >
-                Overall
-              </button>
-            </div>
-            {activeTab === 'daily' && (
-              <ResponsiveContainer width="100%" height={300}>
-                <LineChart data={getHabitData()}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                  <XAxis dataKey="date" stroke="#9CA3AF" />
-                  <YAxis stroke="#9CA3AF" />
-                  <Tooltip contentStyle={{ backgroundColor: '#1F2937', border: 'none' }} />
-                  <Legend />
-                  <Line type="monotone" dataKey="completed" stroke="#818CF8" />
-                </LineChart>
-              </ResponsiveContainer>
-            )}
-            {activeTab === 'weekly' && (
-              <div className="bg-gray-700 h-4 rounded-full overflow-hidden">
-                <div
-                  className="bg-indigo-600 h-4 rounded-full transition-all duration-500 ease-out"
-                  style={{ width: `${getWeeklyProgress()}%` }}
-                ></div>
-              </div>
-            )}
-            {activeTab === 'overall' && (
-              <ResponsiveContainer width="100%" height={300}>
-                <PieChart>
-                  <Pie
-                    data={[
-                      { name: 'Completed', value: getOverallSuccessRate() },
-                      { name: 'Missed', value: 100 - getOverallSuccessRate() }
-                    ]}
-                    cx="50%"
-                    cy="50%"
-                    outerRadius={80}
-                    fill="#8884d8"
-                    dataKey="value"
-                    label
-                  >
-                    <Cell fill="#818CF8" />
-                    <Cell fill="#4B5563" />
-                  </Pie>
-                  <Tooltip contentStyle={{ backgroundColor: '#1F2937', border: 'none' }} />
-                  <Legend />
-                </PieChart>
-              </ResponsiveContainer>
-            )}
-          </div>
-          
+  if (!user) {
+    return null
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-900 text-gray-100 font-sans">
+      <nav className="bg-gray-800 p-4">
+        <div className="max-w-6xl mx-auto flex justify-between items-center">
+          <h1 className="text-2xl font-bold text-indigo-400">Habit Tracker</h1>
           <button
-            onClick={generateReport}
-            className="mt-8 px-4 py-2 border border-transparent text-sm font-medium rounded-md text-gray-900 bg-indigo-400 hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+            onClick={handleSignOut}
+            className="px-4 py-2 border border-transparent text-sm font-medium rounded-md text-gray-900 bg-indigo-400 hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
           >
-            Generate Report
+            Sign Out
           </button>
         </div>
+      </nav>
+
+      <div className="py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-6xl mx-auto bg-gray-800 rounded-lg shadow-xl overflow-hidden">
+          <div className="px-6 py-8">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              <div className="bg-gray-700 p-6 rounded-lg shadow-md">
+                <Calendar
+                  onChange={setSelectedDate}
+                  value={selectedDate}
+                  className="w-full bg-gray-800 text-gray-100 border-gray-700 rounded-lg"
+                  tileClassName={({ date, view }) =>
+                    view === 'month' ? `${
+                      getCompletionStatus(date) === 'complete' ? 'bg-green-600' :
+                      getCompletionStatus(date) === 'partial' ? 'bg-yellow-600' :
+                      'bg-red-600'
+                    } hover:opacity-75 text-gray-100` : null
+                  }
+                />
+              </div>
+             
+              <div>
+                <form onSubmit={addHabit} className="mb-6">
+                  <div className="flex">
+                    <input
+                      type="text"
+                      value={newHabitName}
+                      onChange={(e) => setNewHabitName(e.target.value)}
+                      placeholder="Enter new habit"
+                      className="flex-grow px-4 py-2 bg-gray-700 border border-gray-600 rounded-l-md focus:ring-indigo-500 focus:border-indigo-500 text-gray-100"
+                    />
+                    <button type="submit" className="px-4 py-2 border border-transparent text-sm font-medium rounded-r-md text-gray-900 bg-indigo-400 hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                      Add Habit
+                    </button>
+                  </div>
+                </form>
+               
+                <ul className="space-y-3">
+                  {habits.map(habit => (
+                    <li key={habit._id} className="flex items-center justify-between bg-gray-700 p-4 rounded-md shadow">
+                      <div className="flex items-center">
+                        <input
+                          type="checkbox"
+                          checked={(habit.completedDates ?? []).includes(selectedDate.toISOString().split('T')[0])}
+                          onChange={() => toggleHabit(habit._id)}
+                          className="h-4 w-4 text-indigo-400 focus:ring-indigo-500 border-gray-600 rounded bg-gray-700"
+                        />
+                        <span className="ml-3 text-gray-100">{habit.name}</span>
+                        <span className="ml-2 text-sm text-gray-400">Streak: {getStreak(habit)}</span>
+                        {getStreak(habit) >= 7 && <span className="ml-2">🔥</span>}
+                        {getStreak(habit) >= 30 && <span className="ml-2">🏆</span>}
+                      </div>
+                      <button onClick={() => removeHabit(habit._id)} className="text-red-400 hover:text-red-300">
+                        <svg className="h-5 w-5" fill="none" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" stroke="currentColor">
+                          <path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                        </svg>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+           
+              <div className="mt-12">
+                <h2 className="text-2xl font-bold text-indigo-400 mb-4">Analytics</h2>
+                <div className="flex mb-4">
+                  <button
+                    className={`mr-2 px-4 py-2 rounded ${activeTab === 'daily' ? 'bg-indigo-600 text-gray-100' : 'bg-gray-700 text-gray-300'}`}
+                    onClick={() => setActiveTab('daily')}
+                  >
+                    Daily
+                  </button>
+                  <button
+                    className={`mr-2 px-4 py-2 rounded ${activeTab === 'weekly' ? 'bg-indigo-600 text-gray-100' : 'bg-gray-700 text-gray-300'}`}
+                    onClick={() => setActiveTab('weekly')}
+                  >
+                    Weekly
+                  </button>
+                  <button
+                    className={`px-4 py-2 rounded ${activeTab === 'overall' ? 'bg-indigo-600 text-gray-100' : 'bg-gray-700 text-gray-300'}`}
+                    onClick={() => setActiveTab('overall')}
+                  >
+                    Overall
+                  </button>
+                </div>
+                {activeTab === 'daily' && (
+                  <ResponsiveContainer width="100%" height={300}>
+                    <LineChart data={getHabitData()}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                      <XAxis dataKey="date" stroke="#9CA3AF" />
+                      <YAxis stroke="#9CA3AF" />
+                      <Tooltip contentStyle={{ backgroundColor: '#1F2937', border: 'none' }} />
+                      <Legend />
+                      <Line type="monotone" dataKey="completed" stroke="#818CF8" />
+                    </LineChart>
+                  </ResponsiveContainer>
+                )}
+                {activeTab === 'weekly' && (
+                  <div className="bg-gray-700 h-4 rounded-full overflow-hidden">
+                    <div
+                      className="bg-indigo-600 h-4 rounded-full transition-all duration-500 ease-out"
+                      style={{ width: `${getWeeklyProgress()}%` }}
+                    ></div>
+                  </div>
+                )}
+                {activeTab === 'overall' && (
+                  <ResponsiveContainer width="100%" height={300}>
+                    <PieChart>
+                      <Pie
+                        data={[
+                          { name: 'Completed', value: getOverallSuccessRate() },
+                          { name: 'Missed', value: 100 - getOverallSuccessRate() }
+                        ]}
+                        cx="50%"
+                        cy="50%"
+                        outerRadius={80}
+                        fill="#8884d8"
+                        dataKey="value"
+                        label
+                      >
+                        <Cell fill="#818CF8" />
+                        <Cell fill="#4B5563" />
+                      </Pie>
+                      <Tooltip contentStyle={{ backgroundColor: '#1F2937', border: 'none' }} />
+                      <Legend />
+                    </PieChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
+             
+              <button
+                onClick={generateReport}
+                className="mt-8 px-4 py-2 border border-transparent text-sm font-medium rounded-md text-gray-900 bg-indigo-400 hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+              >
+                Generate Report
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
-    </div>
-  )
+    )
 }
