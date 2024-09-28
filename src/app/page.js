@@ -1,33 +1,27 @@
 "use client"
 
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
 import Calendar from 'react-calendar'
 import 'react-calendar/dist/Calendar.css'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
 import { jsPDF } from "jspdf"
 
 export default function Home() {
-  const router = useRouter()
   const [habits, setHabits] = useState([])
   const [newHabitName, setNewHabitName] = useState('')
   const [selectedDate, setSelectedDate] = useState(new Date())
   const [activeTab, setActiveTab] = useState('daily')
-  const [user, setUser] = useState(null)
 
   useEffect(() => {
-    const storedUser = localStorage.getItem('user')
-    if (!storedUser) {
-      router.push('/signin')
-    } else {
-      setUser(JSON.parse(storedUser))
-      fetchHabits()
-    }
-  }, [router])
+    fetchHabits()
+  }, [])
 
   const fetchHabits = async () => {
     try {
       const response = await fetch('/api/habits')
+      if (!response.ok) {
+        throw new Error('Failed to fetch habits')
+      }
       const data = await response.json()
       setHabits(Array.isArray(data) ? data : [])
     } catch (error) {
@@ -39,14 +33,21 @@ export default function Home() {
   const addHabit = async (e) => {
     e.preventDefault()
     if (newHabitName.trim()) {
-      const response = await fetch('/api/habits', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newHabitName.trim(), completedDates: [] })
-      })
-      const data = await response.json()
-      setHabits(prevHabits => [...prevHabits, { ...data.habit, _id: data.insertedId }])
-      setNewHabitName('')
+      try {
+        const response = await fetch('/api/habits', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: newHabitName.trim(), completedDates: [] })
+        })
+        if (!response.ok) {
+          throw new Error('Failed to add habit')
+        }
+        const data = await response.json()
+        setHabits(prevHabits => [...prevHabits, { ...data.habit, _id: data.insertedId }])
+        setNewHabitName('')
+      } catch (error) {
+        console.error('Error adding habit:', error)
+      }
     }
   }
 
@@ -57,20 +58,33 @@ export default function Home() {
       ? habit.completedDates.filter(date => date !== dateString)
       : [...habit.completedDates, dateString]
    
-    await fetch('/api/habits', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, completedDates: updatedCompletedDates })
-    })
-
-    setHabits(prevHabits => prevHabits.map(habit =>
-      habit._id === id ? { ...habit, completedDates: updatedCompletedDates } : habit
-    ))
+    try {
+      const response = await fetch('/api/habits', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, completedDates: updatedCompletedDates })
+      })
+      if (!response.ok) {
+        throw new Error('Failed to update habit')
+      }
+      setHabits(prevHabits => prevHabits.map(habit =>
+        habit._id === id ? { ...habit, completedDates: updatedCompletedDates } : habit
+      ))
+    } catch (error) {
+      console.error('Error updating habit:', error)
+    }
   }
 
   const removeHabit = async (id) => {
-    await fetch(`/api/habits?id=${id}`, { method: 'DELETE' })
-    setHabits(prevHabits => prevHabits.filter(habit => habit._id !== id))
+    try {
+      const response = await fetch(`/api/habits?id=${id}`, { method: 'DELETE' })
+      if (!response.ok) {
+        throw new Error('Failed to delete habit')
+      }
+      setHabits(prevHabits => prevHabits.filter(habit => habit._id !== id))
+    } catch (error) {
+      console.error('Error removing habit:', error)
+    }
   }
 
   const getStreak = (habit) => {
@@ -140,27 +154,12 @@ export default function Home() {
     doc.text(`Overall Success Rate: ${getOverallSuccessRate()}%`, 20, 20 + (habits.length * 10))
     doc.save("habit-tracker-report.pdf")
   }
-
-  const handleSignOut = () => {
-    localStorage.removeItem('user')
-    router.push('/signin')
-  }
-
-  if (!user) {
-    return null
-  }
-
   return (
     <div className="min-h-screen bg-gray-900 text-gray-100 font-sans">
       <nav className="bg-gray-800 p-4">
         <div className="max-w-6xl mx-auto flex justify-between items-center">
           <h1 className="text-2xl font-bold text-indigo-400">Habit Tracker</h1>
-          <button
-            onClick={handleSignOut}
-            className="px-4 py-2 border border-transparent text-sm font-medium rounded-md text-gray-900 bg-indigo-400 hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-          >
-            Sign Out
-          </button>
+       
         </div>
       </nav>
 
